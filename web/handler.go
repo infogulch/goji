@@ -1,7 +1,7 @@
 package web
 
 import (
-	"log"
+	"fmt"
 	"net/http"
 )
 
@@ -36,7 +36,6 @@ func parseHandler(h HandlerType) Handler {
 	case http.Handler:
 		return netHTTPHandlerWrap{f}
 	default:
-		log.Fatalf(unknownHandler, h)
-		panic("log.Fatalf does not return")
+		panic(fmt.Sprintf(unknownHandler, h))
 	}
 }

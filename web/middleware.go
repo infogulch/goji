@@ -2,7 +2,6 @@ package web
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 )
@@ -62,7 +61,7 @@ func (m *mStack) appendLayer(fn interface{}) {
 	case func(*C, http.Handler) http.Handler:
 		ml.fn = f
 	default:
-		log.Fatalf(unknownMiddleware, fn)
+		panic(fmt.Errorf(unknownMiddleware, fn))
 	}
 	m.stack = append(m.stack, ml)
 }
