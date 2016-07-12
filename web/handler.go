@@ -25,8 +25,10 @@ func (h handlerFuncWrap) ServeHTTPC(c C, w http.ResponseWriter, r *http.Request)
 	h.fn(c, w, r)
 }
 
-func parseHandler(h HandlerType) Handler {
-	switch f := h.(type) {
+func parseHandler(h HandlerType, di Injector) Handler {
+	fn := h
+check:
+	switch f := fn.(type) {
 	case func(c C, w http.ResponseWriter, r *http.Request):
 		return handlerFuncWrap{f}
 	case func(w http.ResponseWriter, r *http.Request):
@@ -36,6 +38,14 @@ func parseHandler(h HandlerType) Handler {
 	case http.Handler:
 		return netHTTPHandlerWrap{f}
 	default:
+		if di != nil {
+			var err error
+			if fn, err = di.Inject(h); err == nil {
+				di = nil
+				goto check
+			}
+			panic(fmt.Errorf("error injecting handler (%v): %v", h, err))
+		}
 		panic(fmt.Sprintf(unknownHandler, h))
 	}
 }

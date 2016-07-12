@@ -48,12 +48,14 @@ type route struct {
 	method  method
 	pattern Pattern
 	handler Handler
+	raw     HandlerType
 }
 
 type router struct {
 	lock     sync.Mutex
 	routes   []route
 	notFound Handler
+	raw      HandlerType
 	machine  *routeMachine
 }
 
@@ -64,9 +66,17 @@ func httpMethod(mname string) method {
 	return mIDK
 }
 
-func (rt *router) compile() *routeMachine {
+func (rt *router) compile(di Injector) *routeMachine {
 	rt.lock.Lock()
 	defer rt.lock.Unlock()
+	rt.notFound = parseHandler(rt.raw, di)
+	for i, r := range rt.routes {
+		h := parseHandler(r.raw, di)
+		if c, ok := h.(compilable); ok {
+			c.CompileDI(di)
+		}
+		rt.routes[i].handler = h
+	}
 	sm := routeMachine{
 		sm:     compile(rt.routes),
 		routes: rt.routes,
@@ -78,7 +88,7 @@ func (rt *router) compile() *routeMachine {
 func (rt *router) getMatch(c *C, w http.ResponseWriter, r *http.Request) Match {
 	rm := rt.getMachine()
 	if rm == nil {
-		rm = rt.compile()
+		rm = rt.compile(nil)
 	}
 
 	methods, route := rm.route(c, w, r)
@@ -119,11 +129,8 @@ func (rt *router) route(c *C, w http.ResponseWriter, r *http.Request) {
 	match.Handler.ServeHTTPC(*c, w, r)
 }
 
-func (rt *router) handleUntyped(p PatternType, m method, h HandlerType) {
-	rt.handle(ParsePattern(p), m, parseHandler(h))
-}
-
-func (rt *router) handle(p Pattern, m method, h Handler) {
+func (rt *router) handleUntyped(pt PatternType, m method, h HandlerType) {
+	p := ParsePattern(pt)
 	rt.lock.Lock()
 	defer rt.lock.Unlock()
 
@@ -145,7 +152,7 @@ func (rt *router) handle(p Pattern, m method, h Handler) {
 		prefix:  pp,
 		method:  m,
 		pattern: p,
-		handler: h,
+		raw:     h,
 	}
 	copy(newRoutes[i+1:], rt.routes[i:])
 

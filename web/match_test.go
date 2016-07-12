@@ -42,7 +42,7 @@ func TestRawHandler(t *testing.T) {
 	t.Parallel()
 
 	for _, h := range rawHandlers {
-		m := Match{Handler: parseHandler(h)}
+		m := Match{Handler: parseHandler(h, nil)}
 		if rh := m.RawHandler(); !funcEqual(rh, h) {
 			t.Errorf("got %#v, expected %#v", rh, h)
 		}

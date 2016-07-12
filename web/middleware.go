@@ -13,6 +13,32 @@ type mLayer struct {
 	orig interface{}
 }
 
+func (m *mLayer) compile(di Injector) {
+	fn := m.orig
+	if in, ok := m.orig.(compilable); ok {
+		in.CompileDI(di)
+	}
+check:
+	switch f := fn.(type) {
+	case func(http.Handler) http.Handler:
+		m.fn = func(c *C, h http.Handler) http.Handler {
+			return f(h)
+		}
+	case func(*C, http.Handler) http.Handler:
+		m.fn = f
+	default:
+		if di != nil {
+			var err error
+			if fn, err = di.Inject(fn); err == nil {
+				di = nil
+				goto check
+			}
+			panic(fmt.Errorf("error injecting handler (%v): %v", m.orig, err))
+		}
+		panic(fmt.Errorf(unknownMiddleware, m.orig))
+	}
+}
+
 // mStack is an entire middleware stack. It contains a slice of middleware
 // layers (outermost first) protected by a mutex, a cache of pre-built stack
 // instances, and a final routing function.
@@ -21,6 +47,7 @@ type mStack struct {
 	stack  []mLayer
 	pool   *cPool
 	router internalRouter
+	di     Injector
 }
 
 type internalRouter interface {
@@ -51,19 +78,12 @@ func (s *cStack) ServeHTTPC(c C, w http.ResponseWriter, r *http.Request) {
 
 const unknownMiddleware = `Unknown middleware type %T. See http://godoc.org/github.com/zenazn/goji/web#MiddlewareType for a list of acceptable types.`
 
+func (m *mStack) CompileDI(di Injector) {
+	m.di = di
+}
+
 func (m *mStack) appendLayer(fn interface{}) {
-	ml := mLayer{orig: fn}
-	switch f := fn.(type) {
-	case func(http.Handler) http.Handler:
-		ml.fn = func(c *C, h http.Handler) http.Handler {
-			return f(h)
-		}
-	case func(*C, http.Handler) http.Handler:
-		ml.fn = f
-	default:
-		panic(fmt.Errorf(unknownMiddleware, fn))
-	}
-	m.stack = append(m.stack, ml)
+	m.stack = append(m.stack, mLayer{orig: fn})
 }
 
 func (m *mStack) findLayer(l interface{}) int {
@@ -87,6 +107,7 @@ func (m *mStack) newStack() *cStack {
 		router.route(&cs.C, w, r)
 	})
 	for i := len(m.stack) - 1; i >= 0; i-- {
+		m.stack[i].compile(m.di)
 		cs.m = m.stack[i].fn(&cs.C, cs.m)
 	}
 

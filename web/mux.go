@@ -31,8 +31,8 @@ func New() *Mux {
 			pool:  makeCPool(),
 		},
 		rt: router{
-			routes:   make([]route, 0),
-			notFound: parseHandler(http.NotFound),
+			routes: make([]route, 0),
+			raw:    http.NotFound,
 		},
 	}
 	mux.ms.router = &mux.rt
@@ -201,7 +201,7 @@ func (m *Mux) Trace(pattern PatternType, handler HandlerType) {
 // HTTP methods that could have been routed had they been provided on an
 // otherwise identical request.
 func (m *Mux) NotFound(handler HandlerType) {
-	m.rt.notFound = parseHandler(handler)
+	m.rt.raw = handler
 }
 
 // Compile compiles the list of routes into bytecode. This only needs to be done
@@ -209,5 +209,10 @@ func (m *Mux) NotFound(handler HandlerType) {
 // for you (at some performance cost on the first request) if you do not call it
 // explicitly.
 func (m *Mux) Compile() {
-	m.rt.compile()
+	m.CompileDI(nil)
+}
+
+func (m *Mux) CompileDI(di Injector) {
+	m.rt.compile(di)
+	m.ms.CompileDI(di)
 }
